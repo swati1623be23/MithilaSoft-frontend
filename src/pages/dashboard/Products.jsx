@@ -47,33 +47,9 @@ const initialForm = {
     continueSelling: false,
     hasVariants: false,
     hasCustomFields: false,
-    customFields: [{ id: `${Date.now()}-1`, type: 'Text', label: '', placeholder: '', required: false }],
-    selectedVariantOptions: [],
-    selectedSizeOptions: [],
-    variantCombinations: [],
 }
 
 const isValidMongoObjectId = (value) => /^[a-f\d]{24}$/i.test(String(value || ''))
-
-const generateCombinations = (variants, sizes) => {
-    if (!variants.length || !sizes.length) return []
-    const combinations = []
-    for (const variant of variants) {
-        for (const size of sizes) {
-            combinations.push({
-                name: `${variant}/${size}`,
-                crossedPrice: '0',
-                price: '0',
-                costPrice: '0',
-                weight: '0',
-                stock: '0',
-                sku: '',
-                image: null,
-            })
-        }
-    }
-    return combinations
-}
 
 const Products = () => {
     const [products, setProducts] = useState([])
@@ -105,13 +81,6 @@ const Products = () => {
     const [openRowMenuId, setOpenRowMenuId] = useState(null)
     const [statusProduct, setStatusProduct] = useState(null)
     const [statusSaving, setStatusSaving] = useState(false)
-    const [showVariantImageModal, setShowVariantImageModal] = useState(false)
-    const [variantImageCrop, setVariantImageCrop] = useState({ x: 0, y: 0 })
-    const [variantImageZoom, setVariantImageZoom] = useState(1)
-    const [variantImageRatio, setVariantImageRatio] = useState({ label: '4:5', value: 4 / 5 })
-    const [variantImageCropPixels, setVariantImageCropPixels] = useState(null)
-    const [variantImageFile, setVariantImageFile] = useState(null)
-    const [currentVariantImageIndex, setCurrentVariantImageIndex] = useState(null)
 
     const fetchProducts = async (nextPage = 1) => {
         try {
@@ -181,33 +150,6 @@ const Products = () => {
 
     const openEditModal = (product) => {
         setEditingProduct(product)
-        const hasVariants = Boolean(product.hasVariants || (product.variants && product.variants.length > 0))
-        const variants = (product.variants || []).map((variant) => ({
-            size: variant.size || '',
-            color: variant.color || '',
-            price: variant.price ?? '',
-            stock: variant.stock ?? '',
-            sku: variant.sku || '',
-        })) || [{ size: '', color: '', price: '', stock: '', sku: '' }]
-        
-        let selectedVariants = []
-        let selectedSizes = []
-        let variantCombinations = []
-        
-        if (hasVariants && product.variants && product.variants.length > 0) {
-            selectedVariants = [...new Set(product.variants.map(v => v.color).filter(Boolean))]
-            selectedSizes = [...new Set(product.variants.map(v => v.size).filter(Boolean))]
-            variantCombinations = product.variants.map((v) => ({
-                name: `${v.color || ''}/${v.size || ''}`.replace(/^\/|\/$/g, ''),
-                price: v.price ?? '0',
-                stock: v.stock ?? '0',
-                sku: v.sku || '',
-                crossedPrice: v.crossedPrice || '0',
-                costPrice: v.costPrice || '0',
-                weight: v.weight || '0',
-            }))
-        }
-        
         setFormData({
             title: product.title || product.name || '',
             slug: product.slug || '',
@@ -221,19 +163,15 @@ const Products = () => {
             seoTitle: product.seo?.title || product.seoTitle || '',
             seoDescription: product.seo?.description || product.seoDescription || '',
             images: (product.images || []).map((image) => image.imageUrl || image.url || image).filter(Boolean) || [''],
-            variants: variants,
+            variants: (product.variants || []).length ? (product.variants || []).map((variant) => ({
+                size: variant.size || '',
+                color: variant.color || '',
+                price: variant.price ?? '',
+                stock: variant.stock ?? '',
+                sku: variant.sku || '',
+            })) : [{ size: '', color: '', price: '', stock: '', sku: '' }],
             currentStock: product.inventory?.currentStock ?? '',
             lowStockThreshold: product.inventory?.lowStockThreshold ?? '10',
-            crossedPrice: product.crossedPrice || '0',
-            costPrice: product.costPrice || '0',
-            weight: product.weight || '0',
-            continueSelling: Boolean(product.continueSelling),
-            hasVariants: hasVariants,
-            hasCustomFields: Boolean(product.hasCustomFields),
-            customFields: product.customFields?.length ? product.customFields : [{ id: `${Date.now()}-1`, type: 'Text', label: '', placeholder: '', required: false }],
-            selectedVariantOptions: selectedVariants,
-            selectedSizeOptions: selectedSizes,
-            variantCombinations: variantCombinations,
         })
         setProductStep(1)
         setShowModal(true)
@@ -291,36 +229,6 @@ const Products = () => {
         setCropImage('')
     }
 
-    const applyVariantImageCrop = async () => {
-        if (!variantImageFile || !variantImageCropPixels || currentVariantImageIndex === null) return
-        const sourceImage = await new Promise((resolve, reject) => {
-            const imageElement = new Image()
-            imageElement.onload = () => resolve(imageElement)
-            imageElement.onerror = reject
-            imageElement.src = variantImageFile
-        })
-        const canvas = document.createElement('canvas')
-        canvas.width = variantImageCropPixels.width
-        canvas.height = variantImageCropPixels.height
-        const context = canvas.getContext('2d')
-        context.drawImage(sourceImage, variantImageCropPixels.x, variantImageCropPixels.y, variantImageCropPixels.width, variantImageCropPixels.height, 0, 0, variantImageCropPixels.width, variantImageCropPixels.height)
-        const croppedImageData = canvas.toDataURL('image/jpeg', 0.92)
-        
-        setFormData((previous) => {
-            const updated = { ...previous }
-            const combinations = [...updated.variantCombinations]
-            combinations[currentVariantImageIndex].image = croppedImageData
-            return { ...updated, variantCombinations: combinations }
-        })
-        
-        setShowVariantImageModal(false)
-        setVariantImageFile(null)
-        setCurrentVariantImageIndex(null)
-        setVariantImageCrop({ x: 0, y: 0 })
-        setVariantImageZoom(1)
-        setVariantImageCropPixels(null)
-    }
-
     const handleSubmit = async (event) => {
         event.preventDefault()
         try {
@@ -368,40 +276,25 @@ const Products = () => {
                     description: formData.seoDescription.trim(),
                 },
                 images: formData.images.filter(Boolean),
-                variants: formData.hasVariants
-                    ? formData.variantCombinations.map((combo) => ({
-                        size: combo.name.split('/')[1] || '',
-                        color: combo.name.split('/')[0] || '',
-                        price: Number(combo.price || 0),
-                        stock: Number(combo.stock || 0),
-                        sku: combo.sku.trim() || '',
-                    }))
-                    : formData.variants.filter((variant) => variant.size || variant.color || variant.price || variant.stock || variant.sku).map((variant) => ({
-                        size: variant.size.trim(),
-                        color: variant.color.trim(),
-                        price: Number(variant.price || 0),
-                        stock: Number(variant.stock || 0),
-                        sku: variant.sku.trim(),
-                    })),
+                variants: formData.variants.filter((variant) => variant.size || variant.color || variant.price || variant.stock || variant.sku).map((variant) => ({
+                    size: variant.size.trim(),
+                    color: variant.color.trim(),
+                    price: Number(variant.price || 0),
+                    stock: Number(variant.stock || 0),
+                    sku: variant.sku.trim(),
+                })),
                 inventory: {
-                    currentStock: formData.hasVariants 
-                        ? formData.variantCombinations.reduce((sum, combo) => sum + Number(combo.stock || 0), 0)
-                        : Number(formData.currentStock || 0),
+                    currentStock: Number(formData.currentStock || 0),
                     lowStockThreshold: Number(formData.lowStockThreshold || 10),
                 },
-                currentStock: formData.hasVariants 
-                    ? formData.variantCombinations.reduce((sum, combo) => sum + Number(combo.stock || 0), 0)
-                    : Number(formData.currentStock || 0),
+                currentStock: Number(formData.currentStock || 0),
                 lowStockThreshold: Number(formData.lowStockThreshold || 10),
-                crossedPrice: formData.hasVariants ? 0 : Number(formData.crossedPrice || 0),
-                costPrice: formData.hasVariants ? 0 : Number(formData.costPrice || 0),
-                weight: formData.hasVariants 
-                    ? formData.variantCombinations.reduce((sum, combo) => sum + Number(combo.weight || 0), 0) / Math.max(formData.variantCombinations.length, 1)
-                    : Number(formData.weight || 0),
+                crossedPrice: Number(formData.crossedPrice || 0),
+                costPrice: Number(formData.costPrice || 0),
+                weight: Number(formData.weight || 0),
                 continueSelling: Boolean(formData.continueSelling),
                 hasVariants: Boolean(formData.hasVariants),
                 hasCustomFields: Boolean(formData.hasCustomFields),
-                customFields: formData.hasCustomFields ? formData.customFields : [],
             }
             if (editingProduct) {
                 await productAPI.update(editingProduct.id || editingProduct._id, payload)
@@ -767,21 +660,6 @@ const Products = () => {
                     onAddVariant={addVariant}
                     onRemoveVariant={removeVariant}
                     editingProduct={editingProduct}
-                    showVariantImageModal={showVariantImageModal}
-                    setShowVariantImageModal={setShowVariantImageModal}
-                    variantImageFile={variantImageFile}
-                    setVariantImageFile={setVariantImageFile}
-                    variantImageCrop={variantImageCrop}
-                    setVariantImageCrop={setVariantImageCrop}
-                    variantImageZoom={variantImageZoom}
-                    setVariantImageZoom={setVariantImageZoom}
-                    variantImageRatio={variantImageRatio}
-                    setVariantImageRatio={setVariantImageRatio}
-                    variantImageCropPixels={variantImageCropPixels}
-                    setVariantImageCropPixels={setVariantImageCropPixels}
-                    currentVariantImageIndex={currentVariantImageIndex}
-                    setCurrentVariantImageIndex={setCurrentVariantImageIndex}
-                    applyVariantImageCrop={applyVariantImageCrop}
                 />
             )}
 
@@ -877,35 +755,8 @@ const ProductWizardModal = ({
     onAddVariant,
     onRemoveVariant,
     editingProduct,
-    showVariantImageModal,
-    setShowVariantImageModal,
-    variantImageFile,
-    setVariantImageFile,
-    variantImageCrop,
-    setVariantImageCrop,
-    variantImageZoom,
-    setVariantImageZoom,
-    variantImageRatio,
-    setVariantImageRatio,
-    variantImageCropPixels,
-    setVariantImageCropPixels,
-    currentVariantImageIndex,
-    setCurrentVariantImageIndex,
-    applyVariantImageCrop,
 }) => {
     const update = (key, value) => setFormData((previous) => ({ ...previous, [key]: value }))
-    const addVariantValues = (key, value) => {
-        const values = value.split(',').map((item) => item.trim()).filter(Boolean)
-        if (!values.length) return []
-        const currentValues = formData[key] || []
-        const updatedValues = [...currentValues, ...values.filter((item) => !currentValues.includes(item))]
-        update(key, updatedValues)
-        update('variantCombinations', generateCombinations(
-            key === 'selectedVariantOptions' ? updatedValues : formData.selectedVariantOptions || [],
-            key === 'selectedSizeOptions' ? updatedValues : formData.selectedSizeOptions || []
-        ))
-        return updatedValues
-    }
     const inputClass = 'mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-500/20 dark:border-gray-700 dark:bg-black dark:text-white'
     const labelClass = 'block text-sm font-semibold text-gray-800 dark:text-white'
 
@@ -981,181 +832,18 @@ const ProductWizardModal = ({
                         <div className="space-y-5">
                             <div className="flex items-center justify-between rounded-lg border border-gray-200 p-4 dark:border-gray-800">
                                 <div><p className="font-semibold">Enable Product Variants</p><p className="text-sm text-gray-500 dark:text-gray-400">Whenever you have multiple color/sizes/specs for any product</p></div>
-                                <button type="button" onClick={() => {
-                                    update('hasVariants', !formData.hasVariants)
-                                    if (!formData.hasVariants) {
-                                        update('selectedVariantOptions', [])
-                                        update('selectedSizeOptions', [])
-                                        update('variantCombinations', [])
-                                    }
-                                }} className={`relative h-7 w-14 rounded-full transition ${formData.hasVariants ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-700'}`} aria-label="Toggle variants"><span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${formData.hasVariants ? 'left-8' : 'left-1'}`} /></button>
+                                <button type="button" onClick={() => update('hasVariants', !formData.hasVariants)} className={`relative h-7 w-14 rounded-full transition ${formData.hasVariants ? 'bg-purple-600' : 'bg-gray-300 dark:bg-gray-700'}`} aria-label="Toggle variants"><span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${formData.hasVariants ? 'left-8' : 'left-1'}`} /></button>
                             </div>
-
-                            {!formData.hasVariants ? (
-                                <>
-                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                                        {[['Crossed Price', 'crossedPrice'], ['Selling Price *', 'price'], ['Cost Price', 'costPrice']].map(([label, key]) => (
-                                            <div key={label}><label className={labelClass}>{label}</label><input type="number" value={formData[key] || '0'} onChange={(event) => update(key, event.target.value)} className={inputClass} /></div>
-                                        ))}
-                                    </div>
-                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                                        <div><label className={labelClass}>Quantity</label><input type="number" value={formData.currentStock || '0'} onChange={(event) => update('currentStock', event.target.value)} className={inputClass} /></div>
-                                        <div><label className={labelClass}>Weight (per unit, in KG) *</label><input type="number" value={formData.weight || '0'} onChange={(event) => update('weight', event.target.value)} className={inputClass} /></div>
-                                        <div><label className={labelClass}>SKU</label><input value={formData.sku} onChange={(event) => update('sku', event.target.value)} placeholder="eg: PROD-NP-101" className={inputClass} /></div>
-                                    </div>
-                                </>
-                            ) : (
-                                <>
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className={labelClass}>Colors</label>
-                                            <div className="mt-1 flex flex-wrap gap-2 rounded-lg border border-gray-300 bg-gray-50 p-3 dark:border-gray-700 dark:bg-[#1a1a1a]">
-                                                {(formData.selectedVariantOptions || []).map((variant, index) => (
-                                                    <span key={index} className="inline-flex items-center gap-1 rounded-full bg-gray-200 px-3 py-1 text-sm text-gray-700 dark:bg-gray-700 dark:text-gray-200">
-                                                        {variant} <button type="button" onClick={() => update('selectedVariantOptions', (formData.selectedVariantOptions || []).filter((_, i) => i !== index))} className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">×</button>
-                                                    </span>
-                                                ))}
-                                                <input type="text" placeholder="eg: Red, Green" onChange={(event) => {
-                                                    if (event.currentTarget.value.includes(',')) {
-                                                        addVariantValues('selectedVariantOptions', event.currentTarget.value)
-                                                        event.currentTarget.value = ''
-                                                    }
-                                                }} onKeyDown={(event) => {
-                                                    if (event.key === 'Enter' || event.key === ',') {
-                                                        if (event.currentTarget.value.trim()) {
-                                                            addVariantValues('selectedVariantOptions', event.currentTarget.value)
-                                                            event.currentTarget.value = ''
-                                                        }
-                                                        event.preventDefault()
-                                                    }
-                                                }} onBlur={(event) => {
-                                                    if (event.currentTarget.value.trim()) {
-                                                        addVariantValues('selectedVariantOptions', event.currentTarget.value)
-                                                        event.currentTarget.value = ''
-                                                    }
-                                                }} className="flex-1 min-w-[100px] border-none bg-transparent outline-none text-gray-900 dark:text-white placeholder:text-gray-500" />
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            <label className={labelClass}>Size</label>
-                                            <div className="mt-1 flex flex-wrap gap-2 rounded-lg border border-gray-300 bg-gray-50 p-3 dark:border-gray-700 dark:bg-[#1a1a1a]">
-                                                {(formData.selectedSizeOptions || []).map((size, index) => (
-                                                    <span key={index} className="inline-flex items-center gap-1 rounded-full bg-gray-200 px-3 py-1 text-sm text-gray-700 dark:bg-gray-700 dark:text-gray-200">
-                                                        {size} <button type="button" onClick={() => update('selectedSizeOptions', (formData.selectedSizeOptions || []).filter((_, i) => i !== index))} className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">×</button>
-                                                    </span>
-                                                ))}
-                                                <input type="text" placeholder="eg: M, L, XL" onChange={(event) => {
-                                                    if (event.currentTarget.value.includes(',')) {
-                                                        addVariantValues('selectedSizeOptions', event.currentTarget.value)
-                                                        event.currentTarget.value = ''
-                                                    }
-                                                }} onKeyDown={(event) => {
-                                                    if (event.key === 'Enter' || event.key === ',') {
-                                                        if (event.currentTarget.value.trim()) {
-                                                            addVariantValues('selectedSizeOptions', event.currentTarget.value)
-                                                            event.currentTarget.value = ''
-                                                        }
-                                                        event.preventDefault()
-                                                    }
-                                                }} onBlur={(event) => {
-                                                    if (event.currentTarget.value.trim()) {
-                                                        addVariantValues('selectedSizeOptions', event.currentTarget.value)
-                                                        event.currentTarget.value = ''
-                                                    }
-                                                }} className="flex-1 min-w-[100px] border-none bg-transparent outline-none text-gray-900 dark:text-white placeholder:text-gray-500" />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {(formData.variantCombinations && formData.variantCombinations.length > 0) && (
-                                        <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
-                                            <table className="w-full text-sm">
-                                                <thead className="bg-gray-50 dark:bg-[#1a1a1a]">
-                                                    <tr className="border-b border-gray-200 dark:border-gray-800">
-                                                        <th className="px-4 py-3 text-left font-semibold text-gray-900 dark:text-white">VARIANT</th>
-                                                        <th className="px-4 py-3 text-left font-semibold text-gray-900 dark:text-white">GROSSED PRICE</th>
-                                                        <th className="px-4 py-3 text-left font-semibold text-gray-900 dark:text-white">SELLING PRICE</th>
-                                                        <th className="px-4 py-3 text-left font-semibold text-gray-900 dark:text-white">COST PRICE</th>
-                                                        <th className="px-4 py-3 text-left font-semibold text-gray-900 dark:text-white">WEIGHT</th>
-                                                        <th className="px-4 py-3 text-left font-semibold text-gray-900 dark:text-white">QUANTITY</th>
-                                                        <th className="px-4 py-3 text-left font-semibold text-gray-900 dark:text-white">SKU</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {(formData.variantCombinations || []).map((combo, idx) => (
-                                                        <tr key={idx} className="border-b border-gray-200 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-[#1a1a1a]">
-                                                            <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
-                                                                <div className="flex items-center gap-3">
-                                                                    <button type="button" onClick={() => {
-                                                                        const input = document.createElement('input')
-                                                                        input.type = 'file'
-                                                                        input.accept = 'image/*'
-                                                                        input.onchange = (e) => {
-                                                                            const file = e.target.files?.[0]
-                                                                            if (file) {
-                                                                                const reader = new FileReader()
-                                                                                reader.onload = () => {
-                                                                                    setVariantImageFile(reader.result)
-                                                                                    setCurrentVariantImageIndex(idx)
-                                                                                    setShowVariantImageModal(true)
-                                                                                    setVariantImageCrop({ x: 0, y: 0 })
-                                                                                    setVariantImageZoom(1)
-                                                                                    setVariantImageCropPixels(null)
-                                                                                }
-                                                                                reader.readAsDataURL(file)
-                                                                            }
-                                                                        }
-                                                                        input.click()
-                                                                    }} className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 hover:border-purple-500 hover:bg-purple-50 dark:border-gray-600 dark:bg-[#1a1a1a] dark:hover:border-purple-400 dark:hover:bg-purple-950/20">
-                                                                        {combo.image ? (
-                                                                            <img src={combo.image} alt={combo.name} className="h-full w-full rounded object-cover" />
-                                                                        ) : (
-                                                                            <Upload className="h-5 w-5 text-gray-400 dark:text-gray-500" />
-                                                                        )}
-                                                                    </button>
-                                                                    <span className="font-semibold">{combo.name}</span>
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-4 py-3"><input type="number" placeholder="0" value={combo.crossedPrice || '0'} onChange={(e) => {
-                                                                const updated = [...formData.variantCombinations]
-                                                                updated[idx].crossedPrice = e.target.value
-                                                                update('variantCombinations', updated)
-                                                            }} className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-gray-900 dark:border-gray-700 dark:bg-[#222] dark:text-white" /></td>
-                                                            <td className="px-4 py-3"><input type="number" placeholder="0" value={combo.price || '0'} onChange={(e) => {
-                                                                const updated = [...formData.variantCombinations]
-                                                                updated[idx].price = e.target.value
-                                                                update('variantCombinations', updated)
-                                                            }} className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-gray-900 dark:border-gray-700 dark:bg-[#222] dark:text-white" /></td>
-                                                            <td className="px-4 py-3"><input type="number" placeholder="0" value={combo.costPrice || '0'} onChange={(e) => {
-                                                                const updated = [...formData.variantCombinations]
-                                                                updated[idx].costPrice = e.target.value
-                                                                update('variantCombinations', updated)
-                                                            }} className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-gray-900 dark:border-gray-700 dark:bg-[#222] dark:text-white" /></td>
-                                                            <td className="px-4 py-3"><input type="number" placeholder="0" value={combo.weight || '0'} onChange={(e) => {
-                                                                const updated = [...formData.variantCombinations]
-                                                                updated[idx].weight = e.target.value
-                                                                update('variantCombinations', updated)
-                                                            }} className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-gray-900 dark:border-gray-700 dark:bg-[#222] dark:text-white" /></td>
-                                                            <td className="px-4 py-3"><input type="number" placeholder="0" value={combo.stock || '0'} onChange={(e) => {
-                                                                const updated = [...formData.variantCombinations]
-                                                                updated[idx].stock = e.target.value
-                                                                update('variantCombinations', updated)
-                                                            }} className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-gray-900 dark:border-gray-700 dark:bg-[#222] dark:text-white" /></td>
-                                                            <td className="px-4 py-3"><input type="text" placeholder="SKU" value={combo.sku || ''} onChange={(e) => {
-                                                                const updated = [...formData.variantCombinations]
-                                                                updated[idx].sku = e.target.value
-                                                                update('variantCombinations', updated)
-                                                            }} className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-gray-900 dark:border-gray-700 dark:bg-[#222] dark:text-white" /></td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    )}
-                                </>
-                            )}
-
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                                {[['Crossed Price', 'crossedPrice'], ['Selling Price *', 'price'], ['Cost Price', 'costPrice']].map(([label, key]) => (
+                                    <div key={label}><label className={labelClass}>{label}</label><input type="number" value={formData[key] || '0'} onChange={(event) => update(key, event.target.value)} className={inputClass} /></div>
+                                ))}
+                            </div>
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                                <div><label className={labelClass}>Quantity</label><input type="number" value={formData.currentStock || '0'} onChange={(event) => update('currentStock', event.target.value)} className={inputClass} /></div>
+                                <div><label className={labelClass}>Weight (per unit, in KG) *</label><input type="number" value={formData.weight || '0'} onChange={(event) => update('weight', event.target.value)} className={inputClass} /></div>
+                                <div><label className={labelClass}>SKU</label><input value={formData.sku} onChange={(event) => update('sku', event.target.value)} placeholder="eg: PROD-NP-101" className={inputClass} /></div>
+                            </div>
                             <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={formData.continueSelling || false} onChange={(event) => update('continueSelling', event.target.checked)} className="h-4 w-4 accent-purple-600" />Continue selling even after product is out of stock</label>
                             <div className="flex justify-between border-t border-gray-200 pt-4 dark:border-gray-800"><button type="button" onClick={() => setProductStep(1)} className="rounded-lg border border-purple-600 px-5 py-2.5 text-sm font-semibold text-purple-700 dark:text-purple-300">Previous: General Information</button><button type="button" onClick={() => setProductStep(3)} className="rounded-lg bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-purple-700">Next: Custom Fields</button></div>
                         </div>
@@ -1167,28 +855,7 @@ const ProductWizardModal = ({
                                 <div><p className="font-semibold">Enable Custom Fields?</p><p className="text-sm text-gray-500 dark:text-gray-400">Whenever you need specific information like (text, image, date, time) for the product</p></div>
                                 <button type="button" onClick={() => update('hasCustomFields', !formData.hasCustomFields)} className={`relative h-7 w-14 rounded-full transition ${formData.hasCustomFields ? 'bg-purple-600' : 'bg-gray-300 dark:bg-gray-700'}`} aria-label="Toggle custom fields"><span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${formData.hasCustomFields ? 'left-8' : 'left-1'}`} /></button>
                             </div>
-                            {formData.hasCustomFields && (
-                                <div className="space-y-3">
-                                    <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
-                                        <table className="w-full min-w-[760px] text-sm">
-                                            <thead className="bg-gray-50 dark:bg-[#1a1a1a]"><tr className="border-b border-gray-200 dark:border-gray-800">{['SN', 'Type', 'Label', 'Placeholder', 'Required', 'Actions'].map((heading) => <th key={heading} className="px-3 py-3 text-left font-semibold text-gray-900 dark:text-white">{heading}</th>)}</tr></thead>
-                                            <tbody>
-                                                {(formData.customFields || []).map((field, index) => (
-                                                    <tr key={field.id} className="border-b border-gray-200 dark:border-gray-800">
-                                                        <td className="px-3 py-2 text-gray-900 dark:text-white">{index + 1}</td>
-                                                        <td className="px-3 py-2"><select value={field.type || 'Text'} onChange={(event) => update('customFields', (formData.customFields || []).map((item) => item.id === field.id ? { ...item, type: event.target.value } : item))} className="w-full rounded border border-gray-300 bg-white px-2 py-2 text-gray-900 dark:border-gray-700 dark:bg-black dark:text-white"><option>Image</option><option>Text</option><option>Date</option><option>Time</option></select></td>
-                                                        <td className="px-3 py-2"><input type="text" value={field.label || ''} placeholder="eg: any label" onChange={(event) => update('customFields', (formData.customFields || []).map((item) => item.id === field.id ? { ...item, label: event.target.value } : item))} className="w-full rounded border border-gray-300 bg-white px-2 py-2 text-gray-900 placeholder:text-gray-400 dark:border-gray-700 dark:bg-black dark:text-white" /></td>
-                                                        <td className="px-3 py-2"><input type="text" value={field.placeholder || ''} placeholder="eg: any placeholder" onChange={(event) => update('customFields', (formData.customFields || []).map((item) => item.id === field.id ? { ...item, placeholder: event.target.value } : item))} className="w-full rounded border border-gray-300 bg-white px-2 py-2 text-gray-900 placeholder:text-gray-400 dark:border-gray-700 dark:bg-black dark:text-white" /></td>
-                                                        <td className="px-3 py-2 text-center"><input type="checkbox" checked={Boolean(field.required)} onChange={(event) => update('customFields', (formData.customFields || []).map((item) => item.id === field.id ? { ...item, required: event.target.checked } : item))} className="h-4 w-4 accent-purple-600" /></td>
-                                                        <td className="px-3 py-2 text-center"><button type="button" onClick={() => update('customFields', (formData.customFields || []).filter((item) => item.id !== field.id))} className="text-red-500 hover:text-red-700 dark:text-red-400" aria-label={`Remove custom field ${index + 1}`}><Trash2 className="h-4 w-4" /></button></td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                    <button type="button" onClick={() => update('customFields', [...(formData.customFields || []), { id: `${Date.now()}-${Math.random()}`, type: 'Text', label: '', placeholder: '', required: false }])} className="rounded-lg border border-purple-600 px-4 py-2 text-sm font-semibold text-purple-600 hover:bg-purple-50 dark:border-purple-400 dark:text-purple-400 dark:hover:bg-purple-950/20">+ Add Custom Field</button>
-                                </div>
-                            )}
+                            {formData.hasCustomFields && <p className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">Custom fields can be configured after the product is created.</p>}
                             <div className="flex justify-between border-t border-gray-200 pt-4 dark:border-gray-800"><button type="button" onClick={() => setProductStep(2)} className="rounded-lg border border-purple-600 px-5 py-2.5 text-sm font-semibold text-purple-700 dark:text-purple-300">Previous: Variants &amp; Inventory</button><button type="submit" className="rounded-lg bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-purple-700">Confirm Add Product</button></div>
                         </div>
                     )}
@@ -1202,18 +869,6 @@ const ProductWizardModal = ({
                             <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">{cropRatios.map((ratio) => <button key={ratio.label} type="button" onClick={() => setCropRatio(ratio)} className={`rounded border px-3 py-2 text-sm ${cropRatio.label === ratio.label ? 'border-purple-600 bg-purple-600 text-white' : 'border-gray-300 dark:border-gray-700'}`}>{ratio.label}</button>)}</div>
                             <div className="mt-4"><div className="mb-1 flex justify-between text-xs text-gray-500"><span>Zoom</span><span>{Math.round(zoom * 100)}%</span></div><input type="range" min="1" max="3" step="0.1" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} className="w-full accent-purple-600" /></div>
                             <div className="mt-4 flex justify-end gap-3"><button type="button" onClick={() => setCropImage('')} className="rounded-lg border border-gray-300 px-4 py-2 text-sm dark:border-gray-700">Cancel</button><button type="button" onClick={applyCrop} className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white">Apply Crop</button></div>
-                        </div>
-                    </div>
-                )}
-
-                {showVariantImageModal && variantImageFile && (
-                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/80 p-4">
-                        <div className="w-full max-w-2xl rounded-xl bg-white p-5 text-gray-900 dark:bg-[#111111] dark:text-white">
-                            <div className="mb-4 flex items-center justify-between"><h3 className="text-lg font-bold">Crop Variant Image</h3><button type="button" onClick={() => { setShowVariantImageModal(false); setVariantImageFile(null); }} aria-label="Close crop"><X className="h-5 w-5" /></button></div>
-                            <div className="relative h-64 overflow-hidden rounded-lg bg-black"><Cropper image={variantImageFile} crop={variantImageCrop} zoom={variantImageZoom} aspect={variantImageRatio.value} onCropChange={setVariantImageCrop} onZoomChange={setVariantImageZoom} onCropComplete={(_, pixels) => setVariantImageCropPixels(pixels)} showGrid restrictPosition /></div>
-                            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">{cropRatios.map((ratio) => <button key={ratio.label} type="button" onClick={() => setVariantImageRatio(ratio)} className={`rounded border px-3 py-2 text-sm ${variantImageRatio.label === ratio.label ? 'border-purple-600 bg-purple-600 text-white' : 'border-gray-300 dark:border-gray-700'}`}>{ratio.label}</button>)}</div>
-                            <div className="mt-4"><div className="mb-1 flex justify-between text-xs text-gray-500"><span>Zoom</span><span>{Math.round(variantImageZoom * 100)}%</span></div><input type="range" min="1" max="3" step="0.1" value={variantImageZoom} onChange={(event) => setVariantImageZoom(Number(event.target.value))} className="w-full accent-purple-600" /></div>
-                            <div className="mt-4 flex justify-end gap-3"><button type="button" onClick={() => { setShowVariantImageModal(false); setVariantImageFile(null); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm dark:border-gray-700">Cancel</button><button type="button" onClick={applyVariantImageCrop} className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white">Apply Crop</button></div>
                         </div>
                     </div>
                 )}
